@@ -3,138 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pro Walkie</title>
+    <title>Fixed Walkie</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #0a0a0a; color: #00ff00; margin: 0; overflow: hidden; }
-        .case { background: #1a1a1a; padding: 25px; border-radius: 30px; border: 4px solid #333; width: 300px; text-align: center; box-shadow: 0 0 20px rgba(0,255,0,0.1); }
-        .screen { background: #000; padding: 15px; border-radius: 10px; border: 2px solid #222; margin-bottom: 20px; }
-        #led { width: 12px; height: 12px; background: #300; border-radius: 50%; margin: 0 auto 10px; border: 1px solid #000; }
-        .led-tx { background: #f00 !important; box-shadow: 0 0 10px #f00; } /* Sending */
-        .led-rx { background: #0f0 !important; box-shadow: 0 0 10px #0f0; } /* Receiving */
+        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #0f0f0f; color: #0f0; margin: 0; }
+        .unit { background: #1a1a1a; padding: 25px; border-radius: 40px; border: 5px solid #333; width: 280px; text-align: center; box-shadow: 0 0 30px rgba(0,255,0,0.2); }
+        .display { background: #000; padding: 15px; border-radius: 15px; border: 2px solid #222; margin-bottom: 20px; font-family: monospace; }
         
-        #visualizer { width: 100%; height: 40px; background: #050505; margin-top: 10px; border-radius: 5px; position: relative; overflow: hidden; }
-        #v-bar { height: 100%; width: 0%; background: #00ff00; transition: width 0.05s; box-shadow: 0 0 10px #00ff00; }
+        /* Indicators */
+        .bar-container { height: 10px; background: #111; border-radius: 5px; margin: 10px 0; overflow: hidden; border: 1px solid #333; }
+        .bar { height: 100%; width: 0%; transition: width 0.1s; }
+        #local-bar { background: #007bff; } /* Blue for YOU */
+        #remote-bar { background: #0f0; }    /* Green for THEM */
 
-        input { background: #000; border: 1px solid #00ff00; color: #00ff00; padding: 10px; width: 100px; text-align: center; font-size: 1.2rem; margin: 10px; }
-        button { cursor: pointer; font-weight: bold; font-family: inherit; }
+        input { background: #000; border: 1px solid #0f0; color: #0f0; padding: 10px; width: 80px; text-align: center; font-size: 1.5rem; border-radius: 10px; margin: 10px; }
         #ptt-btn { 
-            width: 140px; height: 140px; border-radius: 50%; border: 10px solid #222; 
-            background: #111; color: #444; margin-top: 20px; outline: none; transition: 0.1s;
+            width: 130px; height: 130px; border-radius: 50%; border: 10px solid #222; 
+            background: #222; color: #555; font-size: 1.2rem; cursor: pointer; outline: none; transition: 0.1s;
         }
-        #ptt-btn:active:not(:disabled) { background: #222; transform: scale(0.95); color: #0f0; border-color: #0f0; }
+        #ptt-btn:active { background: #333; border-color: #0f0; color: #0f0; transform: scale(0.95); }
         #ptt-btn:disabled { opacity: 0.1; }
-        #status { font-size: 0.7rem; margin-top: 15px; color: #666; }
+        #status { font-size: 0.7rem; color: #555; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <div class="case">
-        <div id="led"></div>
-        <div class="screen">
-            <div style="font-size: 0.6rem; color: #008800;">CHANNEL ID</div>
-            <div id="my-id" style="font-size: 2rem;">----</div>
-            <div id="visualizer"><div id="v-bar"></div></div>
-            <div id="remote-status" style="font-size: 0.7rem; margin-top: 5px;">IDLE</div>
+    <div class="unit">
+        <div class="display">
+            <div style="font-size: 0.6rem;">MY ID: <span id="my-id" style="font-size: 1.5rem; color: #007bff;">----</span></div>
+            <hr style="border: 0; border-top: 1px solid #222;">
+            <div style="font-size: 0.6rem;">LOCAL MIC (YOU)</div>
+            <div class="bar-container"><div id="local-bar" class="bar"></div></div>
+            <div style="font-size: 0.6rem;">REMOTE MIC (THEM)</div>
+            <div class="bar-container"><div id="remote-bar" class="bar"></div></div>
+            <div id="connection-status" style="font-size: 0.8rem; color: #aaa;">OFFLINE</div>
         </div>
         
         <input type="number" id="remote-id" placeholder="0000">
-        <button id="connect-btn" style="padding: 8px 15px; background: #00ff00; color: #000; border: none; border-radius: 4px;">SYNC</button>
-        
+        <button onclick="connect()" style="background:#0f0; color:#000; border:none; padding:10px 20px; border-radius:10px; font-weight:bold; cursor:pointer;">SYNC</button>
+        <br>
         <button id="ptt-btn" disabled>HOLD</button>
-        <div id="status">INIT...</div>
+        <div id="status">ALLOW MIC ACCESS</div>
     </div>
 
     <script>
-        const myIdStr = Math.floor(1000 + Math.random() * 9000).toString();
-        const peer = new Peer(myIdStr);
-        document.getElementById('my-id').innerText = myIdStr;
+        const id = Math.floor(1000 + Math.random() * 9000).toString();
+        document.getElementById('my-id').innerText = id;
 
-        let localStream, dataConn, audioCtx, analyser, dataArray;
-        const pttBtn = document.getElementById('ptt-btn'), led = document.getElementById('led');
-        const vBar = document.getElementById('v-bar'), statusDiv = document.getElementById('status');
-        const remoteStatus = document.getElementById('remote-status');
+        // Force STUN servers to bypass India's mobile network NATs
+        const peer = new Peer(id, {
+            config: {'iceServers': [
+                { url: 'stun:stun.l.google.com:19302' },
+                { url: 'stun:stun1.l.google.com:19302' }
+            ]}
+        });
 
+        let localStream;
+        const pttBtn = document.getElementById('ptt-btn');
+        const localBar = document.getElementById('local-bar');
+        const remoteBar = document.getElementById('remote-bar');
+
+        // Setup Local Mic and Visualizer
         navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             localStream = stream;
-            localStream.getAudioTracks()[0].enabled = false;
-            statusDiv.innerText = "MIC READY";
+            localStream.getAudioTracks()[0].enabled = false; // Start muted
+            document.getElementById('status').innerText = "READY";
+            setupVisualizer(stream, localBar);
         });
 
-        // 1. Establish Data + Audio Connection
-        document.getElementById('connect-btn').addEventListener('click', () => {
+        function connect() {
             const rId = document.getElementById('remote-id').value;
-            if (!rId) return;
-            dataConn = peer.connect(rId); // For PTT signals
-            setupData(dataConn);
             handleCall(peer.call(rId, localStream));
-        });
-
-        peer.on('connection', conn => { dataConn = conn; setupData(conn); });
-        peer.on('call', call => { call.answer(localStream); handleCall(call); });
-
-        function setupData(conn) {
-            conn.on('data', data => {
-                if (data === 'PTT_ON') {
-                    remoteStatus.innerText = "INCOMING...";
-                    led.className = 'led-rx';
-                } else {
-                    remoteStatus.innerText = "IDLE";
-                    led.className = '';
-                }
-            });
         }
 
+        peer.on('call', call => {
+            call.answer(localStream);
+            handleCall(call);
+        });
+
         function handleCall(call) {
+            document.getElementById('connection-status').innerText = "CONNECTING...";
             call.on('stream', remoteStream => {
                 const audio = new Audio();
                 audio.srcObject = remoteStream;
-                audio.play().catch(() => statusDiv.innerText = "TAP SCREEN!");
-                setupVisualizer(remoteStream);
+                audio.play().catch(() => { document.getElementById('connection-status').innerText = "CLICK TO HEAR!"; });
+                setupVisualizer(remoteStream, remoteBar);
                 pttBtn.disabled = false;
-                statusDiv.innerText = "CONNECTED";
+                document.getElementById('connection-status').innerText = "LIVE";
             });
         }
 
-        // 2. Audio Monitor (The Fix)
-        function setupVisualizer(stream) {
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function setupVisualizer(stream, barElement) {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const source = audioCtx.createMediaStreamSource(stream);
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 64;
             source.connect(analyser);
-            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            const data = new Uint8Array(analyser.frequencyBinCount);
             
-            function draw() {
-                requestAnimationFrame(draw);
-                analyser.getByteFrequencyData(dataArray);
-                let sum = dataArray.reduce((a, b) => a + b, 0);
-                let vol = (sum / dataArray.length);
-                vBar.style.width = Math.min(vol * 2, 100) + "%";
+            function frame() {
+                requestAnimationFrame(frame);
+                analyser.getByteFrequencyData(data);
+                let vol = data.reduce((a, b) => a + b, 0) / data.length;
+                barElement.style.width = (vol * 2) + "%";
             }
-            draw();
+            frame();
         }
 
-        // 3. PTT Logic
-        const start = () => {
-            if(!localStream) return;
-            localStream.getAudioTracks()[0].enabled = true;
-            led.className = 'led-tx';
-            if(dataConn) dataConn.send('PTT_ON');
-            statusDiv.innerText = "TALKING...";
-        };
-        const stop = () => {
-            if(!localStream) return;
-            localStream.getAudioTracks()[0].enabled = false;
-            led.className = '';
-            if(dataConn) dataConn.send('PTT_OFF');
-            statusDiv.innerText = "CONNECTED";
-        };
+        const startTalk = () => { if(localStream) { localStream.getAudioTracks()[0].enabled = true; pttBtn.style.color = "#0f0"; } };
+        const stopTalk = () => { if(localStream) { localStream.getAudioTracks()[0].enabled = false; pttBtn.style.color = "#555"; } };
 
-        pttBtn.addEventListener('mousedown', start);
-        pttBtn.addEventListener('mouseup', stop);
-        pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); start(); });
-        pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stop(); });
+        pttBtn.addEventListener('mousedown', startTalk);
+        pttBtn.addEventListener('mouseup', stopTalk);
+        pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startTalk(); });
+        pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopTalk(); });
     </script>
 </body>
 </html>
