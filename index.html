@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PTT Walkie-Talkie</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #1a1a1a; color: #eee; margin: 0; }
+        .card { background: #252525; padding: 30px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.7); text-align: center; width: 280px; border: 1px solid #333; }
+        
+        /* The Light/LED Indicator */
+        #led { width: 15px; height: 15px; background: #ff4d4d; border-radius: 50%; margin: 0 auto 15px; box-shadow: 0 0 10px #ff4d4d; transition: 0.2s; }
+        .led-on { background: #2ecc71 !important; box-shadow: 0 0 15px #2ecc71 !important; }
+
+        input { padding: 12px; border-radius: 8px; border: 1px solid #444; margin: 15px 0; width: 90%; background: #111; color: white; text-align: center; }
+        
+        /* Push to Talk Button */
+        #ptt-btn { 
+            width: 120px; height: 120px; border-radius: 50%; border: 6px solid #333; 
+            background: #444; color: white; font-weight: bold; cursor: pointer;
+            user-select: none; transition: transform 0.1s, background 0.2s;
+            margin-top: 20px; outline: none;
+        }
+        #ptt-btn:active { background: #555; transform: scale(0.95); border-color: #2ecc71; }
+        #ptt-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        #status { margin-top: 20px; color: #888; font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px; }
+        .id-label { font-size: 0.7em; color: #666; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <div id="led"></div>
+        <div class="id-label">YOUR DEVICE ID</div>
+        <strong id="my-id" style="color: #007bff; font-size: 1.2em;">...</strong>
+        
+        <input type="text" id="remote-id" placeholder="Paste Remote ID here">
+        <button id="connect-btn" style="width: 100%; padding: 10px; border-radius: 8px; border: none; background: #007bff; color: white; cursor: pointer;">Connect Devices</button>
+        
+        <button id="ptt-btn" disabled>HOLD TO TALK</button>
+        
+        <div id="status">Starting Peer...</div>
+    </div>
+
+    <script>
+        const peer = new Peer();
+        let localStream;
+        const pttBtn = document.getElementById('ptt-btn');
+        const led = document.getElementById('led');
+        const statusDiv = document.getElementById('status');
+
+        // 1. Setup Audio
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            localStream = stream;
+            // Mute mic by default
+            localStream.getAudioTracks()[0].enabled = false;
+            statusDiv.innerText = "Ready to connect";
+        }).catch(err => {
+            statusDiv.innerText = "Mic Error: Check Permissions";
+        });
+
+        peer.on('open', id => document.getElementById('my-id').innerText = id);
+
+        // 2. Connection Logic
+        document.getElementById('connect-btn').addEventListener('click', () => {
+            const remoteId = document.getElementById('remote-id').value;
+            if (!remoteId) return;
+            
+            const call = peer.call(remoteId, localStream);
+            setupCallListeners(call);
+        });
+
+        peer.on('call', call => {
+            call.answer(localStream);
+            setupCallListeners(call);
+        });
+
+        function setupCallListeners(call) {
+            statusDiv.innerText = "Connecting...";
+            call.on('stream', remoteStream => {
+                const audio = new Audio();
+                audio.srcObject = remoteStream;
+                audio.play();
+                statusDiv.innerText = "Online";
+                pttBtn.disabled = false; // Enable PTT once connected
+            });
+        }
+
+        // 3. Push-to-Talk Logic
+        const startTalking = () => {
+            if (localStream) {
+                localStream.getAudioTracks()[0].enabled = true;
+                led.classList.add('led-on');
+                statusDiv.innerText = "TRANSMITTING...";
+            }
+        };
+
+        const stopTalking = () => {
+            if (localStream) {
+                localStream.getAudioTracks()[0].enabled = false;
+                led.classList.remove('led-on');
+                statusDiv.innerText = "Online";
+            }
+        };
+
+        // Mouse Events
+        pttBtn.addEventListener('mousedown', startTalking);
+        pttBtn.addEventListener('mouseup', stopTalking);
+        
+        // Touch Events (for Mobile)
+        pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startTalking(); });
+        pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopTalking(); });
+
+    </script>
+</body>
+</html>
