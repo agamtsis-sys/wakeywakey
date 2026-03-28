@@ -3,120 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fixed Walkie</title>
+    <title>Global Walkie-Talkie</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #0f0f0f; color: #0f0; margin: 0; }
-        .unit { background: #1a1a1a; padding: 25px; border-radius: 40px; border: 5px solid #333; width: 280px; text-align: center; box-shadow: 0 0 30px rgba(0,255,0,0.2); }
-        .display { background: #000; padding: 15px; border-radius: 15px; border: 2px solid #222; margin-bottom: 20px; font-family: monospace; }
-        
-        /* Indicators */
-        .bar-container { height: 10px; background: #111; border-radius: 5px; margin: 10px 0; overflow: hidden; border: 1px solid #333; }
-        .bar { height: 100%; width: 0%; transition: width 0.1s; }
-        #local-bar { background: #007bff; } /* Blue for YOU */
-        #remote-bar { background: #0f0; }    /* Green for THEM */
-
-        input { background: #000; border: 1px solid #0f0; color: #0f0; padding: 10px; width: 80px; text-align: center; font-size: 1.5rem; border-radius: 10px; margin: 10px; }
-        #ptt-btn { 
-            width: 130px; height: 130px; border-radius: 50%; border: 10px solid #222; 
-            background: #222; color: #555; font-size: 1.2rem; cursor: pointer; outline: none; transition: 0.1s;
-        }
-        #ptt-btn:active { background: #333; border-color: #0f0; color: #0f0; transform: scale(0.95); }
-        #ptt-btn:disabled { opacity: 0.1; }
-        #status { font-size: 0.7rem; color: #555; margin-top: 10px; }
+        body { font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #000; color: #0f0; margin: 0; }
+        .box { border: 2px solid #0f0; padding: 25px; border-radius: 15px; width: 280px; text-align: center; background: #111; }
+        .bar { height: 12px; background: #222; border: 1px solid #444; margin: 10px 0; overflow: hidden; }
+        #r-fill { height: 100%; width: 0%; background: #0f0; transition: width 0.1s; }
+        #l-fill { height: 100%; width: 0%; background: #007bff; transition: width 0.1s; }
+        input { background: #000; border: 1px solid #0f0; color: #0f0; width: 80px; font-size: 1.5rem; text-align: center; margin: 10px; padding: 5px; }
+        #ptt { width: 140px; height: 140px; border-radius: 50%; border: 6px solid #444; background: #222; color: #fff; font-size: 1rem; cursor: pointer; outline: none; margin-top: 10px;}
+        #ptt:active { border-color: #0f0; box-shadow: 0 0 20px #0f0; }
+        #ptt:disabled { opacity: 0.2; }
     </style>
 </head>
 <body>
 
-    <div class="unit">
-        <div class="display">
-            <div style="font-size: 0.6rem;">MY ID: <span id="my-id" style="font-size: 1.5rem; color: #007bff;">----</span></div>
-            <hr style="border: 0; border-top: 1px solid #222;">
-            <div style="font-size: 0.6rem;">LOCAL MIC (YOU)</div>
-            <div class="bar-container"><div id="local-bar" class="bar"></div></div>
-            <div style="font-size: 0.6rem;">REMOTE MIC (THEM)</div>
-            <div class="bar-container"><div id="remote-bar" class="bar"></div></div>
-            <div id="connection-status" style="font-size: 0.8rem; color: #aaa;">OFFLINE</div>
-        </div>
+    <div class="box">
+        <div style="font-size: 1.2rem;">ID: <span id="myid" style="color:#fff">....</span></div>
         
-        <input type="number" id="remote-id" placeholder="0000">
-        <button onclick="connect()" style="background:#0f0; color:#000; border:none; padding:10px 20px; border-radius:10px; font-weight:bold; cursor:pointer;">SYNC</button>
-        <br>
-        <button id="ptt-btn" disabled>HOLD</button>
-        <div id="status">ALLOW MIC ACCESS</div>
+        <div style="font-size: 0.6rem; margin-top:15px; text-align:left;">YOU (TRANSMIT)</div>
+        <div class="bar"><div id="l-fill"></div></div>
+        
+        <div style="font-size: 0.6rem; text-align:left;">THEM (RECEIVE)</div>
+        <div class="bar"><div id="r-fill"></div></div>
+
+        <input type="number" id="rid" placeholder="0000">
+        <button onclick="connectNow()" style="background:#0f0; border:none; padding:10px; cursor:pointer; font-weight:bold; width:100%;">SYNC CONNECTION</button>
+        
+        <button id="ptt" disabled>HOLD TO TALK</button>
+        <div id="stat" style="font-size: 0.7rem; color: #666; margin-top:15px;">INITIALIZING...</div>
     </div>
 
     <script>
-        const id = Math.floor(1000 + Math.random() * 9000).toString();
-        document.getElementById('my-id').innerText = id;
+        const myId = Math.floor(1000 + Math.random() * 9000).toString();
+        document.getElementById('myid').innerText = myId;
 
-        // Force STUN servers to bypass India's mobile network NATs
-        const peer = new Peer(id, {
+        // --- PASTE YOUR METERED.CA CREDENTIALS HERE ---
+        const peer = new Peer(myId, {
             config: {'iceServers': [
-                { url: 'stun:stun.l.google.com:19302' },
-                { url: 'stun:stun1.l.google.com:19302' }
+                { urls: 'stun:stun.l.google.com:19302' },
+                { 
+                    urls: 'turn:standard.metered.ca:443', 
+                    username: '04bfc0921d83f1fe432e0ba6', 
+                    credential: 'yqGPzEgVNB4nv9OI' 
+                }
             ]}
         });
 
-        let localStream;
-        const pttBtn = document.getElementById('ptt-btn');
-        const localBar = document.getElementById('local-bar');
-        const remoteBar = document.getElementById('remote-bar');
-
-        // Setup Local Mic and Visualizer
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-            localStream = stream;
-            localStream.getAudioTracks()[0].enabled = false; // Start muted
-            document.getElementById('status').innerText = "READY";
-            setupVisualizer(stream, localBar);
+        let stream;
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
+            stream = s;
+            stream.getAudioTracks()[0].enabled = false;
+            viz(s, 'l-fill');
+            document.getElementById('stat').innerText = "MIC READY";
         });
 
-        function connect() {
-            const rId = document.getElementById('remote-id').value;
-            handleCall(peer.call(rId, localStream));
+        function connectNow() {
+            const call = peer.call(document.getElementById('rid').value, stream);
+            setup(call);
         }
 
-        peer.on('call', call => {
-            call.answer(localStream);
-            handleCall(call);
+        peer.on('call', c => {
+            c.answer(stream);
+            setup(c);
         });
 
-        function handleCall(call) {
-            document.getElementById('connection-status').innerText = "CONNECTING...";
-            call.on('stream', remoteStream => {
-                const audio = new Audio();
-                audio.srcObject = remoteStream;
-                audio.play().catch(() => { document.getElementById('connection-status').innerText = "CLICK TO HEAR!"; });
-                setupVisualizer(remoteStream, remoteBar);
-                pttBtn.disabled = false;
-                document.getElementById('connection-status').innerText = "LIVE";
+        function setup(call) {
+            document.getElementById('stat').innerText = "TUNNELING...";
+            call.on('stream', rs => {
+                const a = new Audio();
+                a.srcObject = rs;
+                a.play().catch(() => document.getElementById('stat').innerText = "TAP TO UNMUTE!");
+                viz(rs, 'r-fill');
+                document.getElementById('ptt').disabled = false;
+                document.getElementById('stat').innerText = "GLOBAL LINK ACTIVE";
             });
         }
 
-        function setupVisualizer(stream, barElement) {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const source = audioCtx.createMediaStreamSource(stream);
-            const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 64;
-            source.connect(analyser);
-            const data = new Uint8Array(analyser.frequencyBinCount);
-            
-            function frame() {
-                requestAnimationFrame(frame);
-                analyser.getByteFrequencyData(data);
-                let vol = data.reduce((a, b) => a + b, 0) / data.length;
-                barElement.style.width = (vol * 2) + "%";
+        function viz(s, id) {
+            const ctx = new AudioContext();
+            const src = ctx.createMediaStreamSource(s);
+            const ana = ctx.createAnalyser();
+            src.connect(ana);
+            const d = new Uint8Array(ana.frequencyBinCount);
+            function loop() {
+                requestAnimationFrame(loop);
+                ana.getByteFrequencyData(d);
+                let vol = d.reduce((a,b)=>a+b)/d.length;
+                document.getElementById(id).style.width = (vol * 3) + "%";
             }
-            frame();
+            loop();
         }
 
-        const startTalk = () => { if(localStream) { localStream.getAudioTracks()[0].enabled = true; pttBtn.style.color = "#0f0"; } };
-        const stopTalk = () => { if(localStream) { localStream.getAudioTracks()[0].enabled = false; pttBtn.style.color = "#555"; } };
-
-        pttBtn.addEventListener('mousedown', startTalk);
-        pttBtn.addEventListener('mouseup', stopTalk);
-        pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startTalk(); });
-        pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopTalk(); });
+        const btn = document.getElementById('ptt');
+        btn.onmousedown = () => { if(stream) stream.getAudioTracks()[0].enabled = true; };
+        btn.onmouseup = () => { if(stream) stream.getAudioTracks()[0].enabled = false; };
+        btn.ontouchstart = (e) => { e.preventDefault(); if(stream) stream.getAudioTracks()[0].enabled = true; };
+        btn.ontouchend = (e) => { e.preventDefault(); if(stream) stream.getAudioTracks()[0].enabled = false; };
     </script>
 </body>
 </html>
