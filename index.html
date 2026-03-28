@@ -3,104 +3,137 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Global Walkie-Talkie</title>
+    <title>Global Walkie Debug</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #000; color: #0f0; margin: 0; }
-        .box { border: 2px solid #0f0; padding: 25px; border-radius: 15px; width: 280px; text-align: center; background: #111; }
-        .bar { height: 12px; background: #222; border: 1px solid #444; margin: 10px 0; overflow: hidden; }
-        #r-fill { height: 100%; width: 0%; background: #0f0; transition: width 0.1s; }
-        #l-fill { height: 100%; width: 0%; background: #007bff; transition: width 0.1s; }
-        input { background: #000; border: 1px solid #0f0; color: #0f0; width: 80px; font-size: 1.5rem; text-align: center; margin: 10px; padding: 5px; }
-        #ptt { width: 140px; height: 140px; border-radius: 50%; border: 6px solid #444; background: #222; color: #fff; font-size: 1rem; cursor: pointer; outline: none; margin-top: 10px;}
-        #ptt:active { border-color: #0f0; box-shadow: 0 0 20px #0f0; }
+        body { font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #000; color: #0f0; margin: 0; padding: 10px; box-sizing: border-box; }
+        .unit { border: 2px solid #0f0; padding: 15px; border-radius: 10px; width: 100%; max-width: 320px; text-align: center; background: #111; }
+        .meter { height: 15px; background: #000; border: 1px solid #333; margin: 5px 0; overflow: hidden; position: relative; }
+        .fill { height: 100%; width: 0%; transition: width 0.1s; }
+        #l-fill { background: #007bff; }
+        #r-fill { background: #0f0; box-shadow: 0 0 10px #0f0; }
+        input { background: #000; border: 1px solid #0f0; color: #0f0; width: 70px; font-size: 1.2rem; text-align: center; margin: 5px; padding: 5px; }
+        #ptt { width: 100px; height: 100px; border-radius: 50%; border: 5px solid #444; background: #222; color: #fff; cursor: pointer; margin-top: 10px; outline: none; }
+        #ptt:active:not(:disabled) { border-color: #0f0; background: #333; }
         #ptt:disabled { opacity: 0.2; }
+        #debug-log { width: 100%; max-width: 320px; height: 120px; background: #050505; border: 1px solid #222; margin-top: 10px; font-size: 0.7rem; overflow-y: auto; text-align: left; padding: 5px; color: #888; white-space: pre-wrap; }
     </style>
 </head>
 <body>
 
-    <div class="box">
-        <div style="font-size: 1.2rem;">ID: <span id="myid" style="color:#fff">....</span></div>
+    <div class="unit">
+        <div style="font-size: 0.9rem;">DEVICE ID: <span id="myid" style="color:#fff; font-weight:bold;">....</span></div>
         
-        <div style="font-size: 0.6rem; margin-top:15px; text-align:left;">YOU (TRANSMIT)</div>
-        <div class="bar"><div id="l-fill"></div></div>
+        <div style="font-size: 0.6rem; margin-top:10px; text-align:left;">LOCAL MIC (YOU)</div>
+        <div class="meter"><div id="l-fill" class="fill"></div></div>
         
-        <div style="font-size: 0.6rem; text-align:left;">THEM (RECEIVE)</div>
-        <div class="bar"><div id="r-fill"></div></div>
+        <div style="font-size: 0.6rem; text-align:left;">REMOTE MIC (THEM)</div>
+        <div class="meter"><div id="r-fill" class="fill"></div></div>
 
         <input type="number" id="rid" placeholder="0000">
-        <button onclick="connectNow()" style="background:#0f0; border:none; padding:10px; cursor:pointer; font-weight:bold; width:100%;">SYNC CONNECTION</button>
+        <button onclick="connectNow()" style="background:#0f0; border:none; padding:8px; cursor:pointer; font-weight:bold; width:100%;">SYNC SYSTEM</button>
         
-        <button id="ptt" disabled>HOLD TO TALK</button>
-        <div id="stat" style="font-size: 0.7rem; color: #666; margin-top:15px;">INITIALIZING...</div>
+        <button id="ptt" disabled>HOLD</button>
     </div>
+
+    <div id="debug-log">SYSTEM STARTING...</div>
 
     <script>
         const myId = Math.floor(1000 + Math.random() * 9000).toString();
         document.getElementById('myid').innerText = myId;
 
-        // --- PASTE YOUR METERED.CA CREDENTIALS HERE ---
+        const debug = (msg) => {
+            const logBox = document.getElementById('debug-log');
+            logBox.innerText += `\n> ${msg}`;
+            logBox.scrollTop = logBox.scrollHeight;
+            console.log(msg);
+        };
+
+        // --- YOUR CREDENTIALS APPLIED ---
         const peer = new Peer(myId, {
-            config: {'iceServers': [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { 
-                    urls: 'turn:standard.metered.ca:443', 
-                    username: '04bfc0921d83f1fe432e0ba6', 
-                    credential: 'yqGPzEgVNB4nv9OI' 
-                }
-            ]}
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { 
+                        urls: 'turn:standard.metered.ca:443', 
+                        username: '04bfc0921d83f1fe432e0ba6', 
+                        credential: 'yqGPzEgVNB4nv9OI' 
+                    }
+                ],
+                iceTransportPolicy: 'relay' // Force use of TURN tunnel
+            },
+            debug: 3
         });
 
-        let stream;
+        let localStream;
+
+        // Step 1: Initialize Mic
         navigator.mediaDevices.getUserMedia({ audio: true }).then(s => {
-            stream = s;
-            stream.getAudioTracks()[0].enabled = false;
+            localStream = s;
+            localStream.getAudioTracks()[0].enabled = false;
             viz(s, 'l-fill');
-            document.getElementById('stat').innerText = "MIC READY";
-        });
+            debug("Mic initialized (Blue bar should move when talking)");
+        }).catch(e => debug("FATAL: Mic access denied. Use HTTPS!"));
 
+        // Step 2: Handle Outgoing
         function connectNow() {
-            const call = peer.call(document.getElementById('rid').value, stream);
-            setup(call);
+            const targetId = document.getElementById('rid').value;
+            if(!targetId) return debug("Enter a 4-digit ID!");
+            debug(`Attempting to sync with ${targetId}...`);
+            const call = peer.call(targetId, localStream);
+            if(call) handleCall(call);
+            else debug("Error: Call object not created.");
         }
 
+        // Step 3: Handle Incoming
         peer.on('call', c => {
-            c.answer(stream);
-            setup(c);
+            debug("Incoming call detected! Answering...");
+            c.answer(localStream);
+            handleCall(c);
         });
 
-        function setup(call) {
-            document.getElementById('stat').innerText = "TUNNELING...";
+        function handleCall(call) {
             call.on('stream', rs => {
+                debug("AUDIO STREAM CONNECTED!");
                 const a = new Audio();
                 a.srcObject = rs;
-                a.play().catch(() => document.getElementById('stat').innerText = "TAP TO UNMUTE!");
+                a.play().then(() => debug("Audio playing.")).catch(() => debug("BLOCKED: Tap screen to hear!"));
                 viz(rs, 'r-fill');
                 document.getElementById('ptt').disabled = false;
-                document.getElementById('stat').innerText = "GLOBAL LINK ACTIVE";
             });
+            call.on('error', e => debug("Call Error: " + e.type));
+            call.on('close', () => debug("Connection closed."));
         }
 
+        // Step 4: Visualizer
         function viz(s, id) {
-            const ctx = new AudioContext();
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
             const src = ctx.createMediaStreamSource(s);
             const ana = ctx.createAnalyser();
+            ana.fftSize = 64;
             src.connect(ana);
             const d = new Uint8Array(ana.frequencyBinCount);
             function loop() {
                 requestAnimationFrame(loop);
                 ana.getByteFrequencyData(d);
                 let vol = d.reduce((a,b)=>a+b)/d.length;
-                document.getElementById(id).style.width = (vol * 3) + "%";
+                document.getElementById(id).style.width = Math.min(vol * 3, 100) + "%";
             }
             loop();
         }
 
-        const btn = document.getElementById('ptt');
-        btn.onmousedown = () => { if(stream) stream.getAudioTracks()[0].enabled = true; };
-        btn.onmouseup = () => { if(stream) stream.getAudioTracks()[0].enabled = false; };
-        btn.ontouchstart = (e) => { e.preventDefault(); if(stream) stream.getAudioTracks()[0].enabled = true; };
-        btn.ontouchend = (e) => { e.preventDefault(); if(stream) stream.getAudioTracks()[0].enabled = false; };
+        // Step 5: PTT Buttons
+        const ptt = document.getElementById('ptt');
+        const start = () => { if(localStream) { localStream.getAudioTracks()[0].enabled = true; debug("TRANSMITTING..."); } };
+        const stop = () => { if(localStream) { localStream.getAudioTracks()[0].enabled = false; debug("IDLE"); } };
+        
+        ptt.onmousedown = start; ptt.onmouseup = stop;
+        ptt.ontouchstart = (e) => { e.preventDefault(); start(); };
+        ptt.ontouchend = (e) => { e.preventDefault(); stop(); };
+
+        // Global Peer Errors
+        peer.on('open', (id) => debug(`Peer Server Open. My ID: ${id}`));
+        peer.on('error', e => debug("PEER ERROR: " + e.type));
     </script>
 </body>
 </html>
