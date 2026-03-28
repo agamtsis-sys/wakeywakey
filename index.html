@@ -2,98 +2,139 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quick Walkie</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pro Walkie</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #1a1a1a; color: white; margin: 0; }
-        .card { background: #252525; padding: 30px; border-radius: 20px; text-align: center; width: 280px; border: 2px solid #333; }
-        #led { width: 20px; height: 20px; background: #500; border-radius: 50%; margin: 0 auto 15px; transition: 0.2s; border: 2px solid #000; }
-        .led-on { background: #0f0 !important; box-shadow: 0 0 15px #0f0; }
-        input { padding: 12px; border-radius: 8px; border: 1px solid #444; margin: 10px 0; width: 80%; background: #000; color: #0f0; font-family: monospace; font-size: 1.2rem; text-align: center; }
+        body { font-family: 'Courier New', monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #0a0a0a; color: #00ff00; margin: 0; overflow: hidden; }
+        .case { background: #1a1a1a; padding: 25px; border-radius: 30px; border: 4px solid #333; width: 300px; text-align: center; box-shadow: 0 0 20px rgba(0,255,0,0.1); }
+        .screen { background: #000; padding: 15px; border-radius: 10px; border: 2px solid #222; margin-bottom: 20px; }
+        #led { width: 12px; height: 12px; background: #300; border-radius: 50%; margin: 0 auto 10px; border: 1px solid #000; }
+        .led-tx { background: #f00 !important; box-shadow: 0 0 10px #f00; } /* Sending */
+        .led-rx { background: #0f0 !important; box-shadow: 0 0 10px #0f0; } /* Receiving */
+        
+        #visualizer { width: 100%; height: 40px; background: #050505; margin-top: 10px; border-radius: 5px; position: relative; overflow: hidden; }
+        #v-bar { height: 100%; width: 0%; background: #00ff00; transition: width 0.05s; box-shadow: 0 0 10px #00ff00; }
+
+        input { background: #000; border: 1px solid #00ff00; color: #00ff00; padding: 10px; width: 100px; text-align: center; font-size: 1.2rem; margin: 10px; }
+        button { cursor: pointer; font-weight: bold; font-family: inherit; }
         #ptt-btn { 
-            width: 140px; height: 140px; border-radius: 50%; border: 8px solid #444; 
-            background: #222; color: white; font-weight: bold; cursor: pointer;
-            user-select: none; margin-top: 20px; outline: none;
+            width: 140px; height: 140px; border-radius: 50%; border: 10px solid #222; 
+            background: #111; color: #444; margin-top: 20px; outline: none; transition: 0.1s;
         }
-        #ptt-btn:active { background: #333; border-color: #0f0; }
-        #ptt-btn:disabled { opacity: 0.2; }
-        .id-text { color: #007bff; font-size: 2rem; margin: 10px 0; font-family: monospace; }
-        #status { color: #888; margin-top: 15px; font-size: 0.8rem; }
+        #ptt-btn:active:not(:disabled) { background: #222; transform: scale(0.95); color: #0f0; border-color: #0f0; }
+        #ptt-btn:disabled { opacity: 0.1; }
+        #status { font-size: 0.7rem; margin-top: 15px; color: #666; }
     </style>
 </head>
 <body>
 
-    <div class="card">
+    <div class="case">
         <div id="led"></div>
-        <div style="font-size: 0.7rem; color: #666;">YOUR 4-DIGIT ID</div>
-        <div id="my-id" class="id-text">....</div>
+        <div class="screen">
+            <div style="font-size: 0.6rem; color: #008800;">CHANNEL ID</div>
+            <div id="my-id" style="font-size: 2rem;">----</div>
+            <div id="visualizer"><div id="v-bar"></div></div>
+            <div id="remote-status" style="font-size: 0.7rem; margin-top: 5px;">IDLE</div>
+        </div>
         
-        <input type="number" id="remote-id" placeholder="Friend's ID">
-        <button id="connect-btn" style="width: 100%; padding: 10px; background: #007bff; border: none; color: white; border-radius: 5px;">Connect</button>
+        <input type="number" id="remote-id" placeholder="0000">
+        <button id="connect-btn" style="padding: 8px 15px; background: #00ff00; color: #000; border: none; border-radius: 4px;">SYNC</button>
         
-        <button id="ptt-btn" disabled>HOLD TO TALK</button>
-        <div id="status">Initializing...</div>
+        <button id="ptt-btn" disabled>HOLD</button>
+        <div id="status">INIT...</div>
     </div>
 
     <script>
-        // Generate a simple 4-digit ID
-        const simpleId = Math.floor(1000 + Math.random() * 9000).toString();
-        const peer = new Peer(simpleId); 
-        
-        let localStream;
-        const pttBtn = document.getElementById('ptt-btn');
-        const led = document.getElementById('led');
-        const statusDiv = document.getElementById('status');
+        const myIdStr = Math.floor(1000 + Math.random() * 9000).toString();
+        const peer = new Peer(myIdStr);
+        document.getElementById('my-id').innerText = myIdStr;
 
-        document.getElementById('my-id').innerText = simpleId;
+        let localStream, dataConn, audioCtx, analyser, dataArray;
+        const pttBtn = document.getElementById('ptt-btn'), led = document.getElementById('led');
+        const vBar = document.getElementById('v-bar'), statusDiv = document.getElementById('status');
+        const remoteStatus = document.getElementById('remote-status');
 
-        // Get Microphone
         navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             localStream = stream;
             localStream.getAudioTracks()[0].enabled = false;
-            statusDiv.innerText = "Mic Connected";
-        }).catch(() => { statusDiv.innerText = "Error: Allow Microphone!"; });
+            statusDiv.innerText = "MIC READY";
+        });
 
-        // Connect Button
+        // 1. Establish Data + Audio Connection
         document.getElementById('connect-btn').addEventListener('click', () => {
             const rId = document.getElementById('remote-id').value;
             if (!rId) return;
-            const call = peer.call(rId, localStream);
-            handleCall(call);
+            dataConn = peer.connect(rId); // For PTT signals
+            setupData(dataConn);
+            handleCall(peer.call(rId, localStream));
         });
 
-        // Incoming Call
-        peer.on('call', call => {
-            call.answer(localStream);
-            handleCall(call);
-        });
+        peer.on('connection', conn => { dataConn = conn; setupData(conn); });
+        peer.on('call', call => { call.answer(localStream); handleCall(call); });
 
-        function handleCall(call) {
-            statusDiv.innerText = "Connecting...";
-            call.on('stream', remoteStream => {
-                const audio = new Audio();
-                audio.srcObject = remoteStream;
-                // Important: Try to play immediately, but show status if blocked
-                audio.play().then(() => {
-                    statusDiv.innerText = "LIVE";
-                }).catch(() => {
-                    statusDiv.innerText = "Tap screen to enable audio!";
-                    window.addEventListener('click', () => audio.play(), {once: true});
-                });
-                pttBtn.disabled = false;
+        function setupData(conn) {
+            conn.on('data', data => {
+                if (data === 'PTT_ON') {
+                    remoteStatus.innerText = "INCOMING...";
+                    led.className = 'led-rx';
+                } else {
+                    remoteStatus.innerText = "IDLE";
+                    led.className = '';
+                }
             });
         }
 
-        // PTT Functions
-        const talk = () => { if(localStream) { localStream.getAudioTracks()[0].enabled = true; led.classList.add('led-on'); statusDiv.innerText = "TRANSMITTING..."; } };
-        const silent = () => { if(localStream) { localStream.getAudioTracks()[0].enabled = false; led.classList.remove('led-on'); statusDiv.innerText = "LIVE"; } };
+        function handleCall(call) {
+            call.on('stream', remoteStream => {
+                const audio = new Audio();
+                audio.srcObject = remoteStream;
+                audio.play().catch(() => statusDiv.innerText = "TAP SCREEN!");
+                setupVisualizer(remoteStream);
+                pttBtn.disabled = false;
+                statusDiv.innerText = "CONNECTED";
+            });
+        }
 
-        pttBtn.addEventListener('mousedown', talk);
-        pttBtn.addEventListener('mouseup', silent);
-        pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); talk(); });
-        pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); silent(); });
+        // 2. Audio Monitor (The Fix)
+        function setupVisualizer(stream) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioCtx.createMediaStreamSource(stream);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            function draw() {
+                requestAnimationFrame(draw);
+                analyser.getByteFrequencyData(dataArray);
+                let sum = dataArray.reduce((a, b) => a + b, 0);
+                let vol = (sum / dataArray.length);
+                vBar.style.width = Math.min(vol * 2, 100) + "%";
+            }
+            draw();
+        }
 
+        // 3. PTT Logic
+        const start = () => {
+            if(!localStream) return;
+            localStream.getAudioTracks()[0].enabled = true;
+            led.className = 'led-tx';
+            if(dataConn) dataConn.send('PTT_ON');
+            statusDiv.innerText = "TALKING...";
+        };
+        const stop = () => {
+            if(!localStream) return;
+            localStream.getAudioTracks()[0].enabled = false;
+            led.className = '';
+            if(dataConn) dataConn.send('PTT_OFF');
+            statusDiv.innerText = "CONNECTED";
+        };
+
+        pttBtn.addEventListener('mousedown', start);
+        pttBtn.addEventListener('mouseup', stop);
+        pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); start(); });
+        pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); stop(); });
     </script>
 </body>
 </html>
